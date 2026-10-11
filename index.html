@@ -85,9 +85,9 @@ const num=id=>parseFloat($('#'+id).value);
 const findP=n=>S.products.find(p=>p.name.trim().toLowerCase()===n.trim().toLowerCase());
 
 const DEN=[['m1','Monedas de Q1',1],['b5','Billetes de Q5',5],['b10','Billetes de Q10',10],['b20','Billetes de Q20',20],['b50','Billetes de Q50',50],['b100','Billetes de Q100',100]];
+const cashTotal=()=>sum(DEN,d=>(S.cnt[d[0]]||0)*d[2]);
 function conteoTot(){let t=0;DEN.forEach(d=>{const n=Math.floor(parseFloat($('#q_'+d[0]).value)||0);t+=n*d[2];$('#s_'+d[0]).textContent=n?money(n*d[2]):''});
-  $('#ct2').textContent=money(t);const e=caja().ef;$('#cs').textContent=money(e);const df=Math.round((t-e)*100)/100,el=$('#cd2');
-  el.textContent=(df>0?'Sobran ':df<0?'Faltan ':'Cuadra ')+(df?money(Math.abs(df)):'');el.className=df?'bad':''}
+  $('#ct2').textContent=money(t)}
 const T={
 resumen:{html:()=>`<div class="grid" id="kp"></div>
 <div class="card"><div class="sw"><button data-m="v">Ventas</button><button data-m="g">Ganancia</button></div>
@@ -95,7 +95,7 @@ resumen:{html:()=>`<div class="grid" id="kp"></div>
 <div class="card" id="imp" style="display:none"><b>Importar datos del Excel</b><div class="mu" style="margin:4px 0 8px">Elige el archivo datos-cristaleria.json. Se hace una sola vez.</div><input id="impf" type="file" accept=".json,application/json"><div id="impm" class="mu" style="margin-top:6px"></div></div>`,
  bind(){document.querySelectorAll('.sw button').forEach(b=>b.onclick=()=>{metric=b.dataset.m;T.resumen.refresh()});$('#impf').onchange=importar},
  refresh(){$('#imp').style.display=S.pend?'block':'none';const c=caja(),M=months(),keys=Object.keys(M).sort().slice(-12),cur=today().slice(0,7);
-  $('#kp').innerHTML=[['Ventas del mes',money((M[cur]||{v:0}).v)],['Ganancia del mes',money((M[cur]||{g:0}).g)],['💵 Efectivo',money(c.ef)],['🏦 Banco',money(c.ba)]].map(k=>`<div class="k"><small>${k[0]}</small><b>${k[1]}</b></div>`).join('');
+  $('#kp').innerHTML=[['Ventas del mes',money((M[cur]||{v:0}).v)],['Ganancia del mes',money((M[cur]||{g:0}).g)],['💵 Efectivo',money(cashTotal())],['🏦 Banco',money(c.ba)]].map(k=>`<div class="k"><small>${k[0]}</small><b>${k[1]}</b></div>`).join('');
   document.querySelectorAll('.sw button').forEach(b=>b.classList.toggle('on',b.dataset.m===metric));
   if(!keys.length){$('#best').textContent='Aún no hay ventas registradas.';$('#ch').innerHTML='';$('#det').innerHTML='';return}
   const val=k=>Math.max(M[k][metric],0),mx=Math.max(...keys.map(val),1),best=keys.reduce((a,k)=>M[k][metric]>M[a][metric]?k:a,keys[0]);
@@ -152,9 +152,9 @@ inventario:{html:()=>`<div class="card"><b>Agregar o actualizar producto</b>
   $('#il').innerHTML=list('products',ps,p=>esc(p.name),p=>`costo ${money(p.cost)} · venta ${money(p.price)}`,p=>{const s=stock(p);return`<span class="${s<=2?'bad':''}">${s} uds</span>`})}},
 };
 function acct(k){const ef=k==='ef',cur=ef?'efectivo':'banco';
- return{html:()=>`<div class="grid"><div class="k"><small>${ef?'💵 Saldo en caja':'🏦 Saldo en bancos'}</small><b id="bal"></b></div><div class="k"><small>Saldo inicial</small><b id="ini"></b></div></div>
-<div class="card"><b>Saldo inicial</b><div class="row"><input id="si" type="number" inputmode="decimal" min="0" placeholder="Ej. ${ef?4000:9000}"><button class="btn" id="sb2" style="margin-top:0">Guardar</button></div></div>
-${ef?`<div class="card"><b>Conteo de efectivo</b><div class="mu" style="font-size:12px;margin:2px 0 4px">Escribe cuántos billetes y monedas hay en la caja.</div>${DEN.map(d=>`<div class="li"><span>${d[1]}</span><div style="display:flex;gap:8px;align-items:center"><input id="q_${d[0]}" type="number" inputmode="numeric" min="0" placeholder="0" style="width:76px"><span class="mu" id="s_${d[0]}" style="min-width:70px;text-align:right"></span></div></div>`).join('')}<div class="li"><span>Total contado</span><b id="ct2"></b></div><div class="li"><span>Saldo en caja (sistema)</span><b id="cs"></b></div><div class="li"><span>Diferencia</span><b id="cd2"></b></div><button class="btn" id="cb2">Guardar conteo</button></div>`:''}
+ return{html:()=>`<div class="grid"><div class="k"><small>${ef?'💵 Saldo en caja':'🏦 Saldo en bancos'}</small><b id="bal"></b></div><div class="k"><small>${ef?'Último conteo guardado':'Saldo inicial'}</small><b id="ini"></b></div></div>
+${ef?'':`<div class="card"><b>Saldo inicial</b><div class="row"><input id="si" type="number" inputmode="decimal" min="0" placeholder="Ej. ${ef?4000:9000}"><button class="btn" id="sb2" style="margin-top:0">Guardar</button></div></div>`}
+${ef?`<div class="card"><b>Conteo de efectivo</b><div class="mu" style="font-size:12px;margin:2px 0 4px">El efectivo en caja es lo que cuentes aquí. Actualízalo cuando cuentes la caja.</div>${DEN.map(d=>`<div class="li"><span>${d[1]}</span><div style="display:flex;gap:8px;align-items:center"><input id="q_${d[0]}" type="number" inputmode="numeric" min="0" placeholder="0" style="width:76px"><span class="mu" id="s_${d[0]}" style="min-width:70px;text-align:right"></span></div></div>`).join('')}<div class="li"><span>Total contado</span><b id="ct2"></b></div><button class="btn" id="cb2">Guardar conteo</button></div>`:''}
 <div class="card"><b>Movimiento</b><label>Tipo</label>${sel('mt',ef?[['dep','Depósito al banco (sale de caja)'],['ret','Retiro del banco (entra a caja)'],['gef','Gasto pagado en efectivo']]:[['dep','Depósito desde caja (entra al banco)'],['ret','Retiro a caja (sale del banco)'],['gba','Gasto pagado desde banco']])}
 <div class="row"><div><label>Monto</label><input id="ma" type="number" inputmode="decimal" min="0"></div><div><label>Fecha</label><input id="md" type="date" value="${today()}"></div></div>
 <label>Nota</label><input id="mn" placeholder="Ej. luz, renta, sueldo"><button class="btn" id="mb">Guardar movimiento</button></div>
@@ -162,11 +162,11 @@ ${ef?`<div class="card"><b>Conteo de efectivo</b><div class="mu" style="font-siz
  bind(){if(ef){DEN.forEach(d=>$('#q_'+d[0]).oninput=()=>{S.dirty=true;conteoTot()});
    $('#cb2').onclick=async()=>{if(!db)return toast('Sin conexión');const o={};DEN.forEach(d=>o[d[0]]=Math.max(0,Math.floor(parseFloat($('#q_'+d[0]).value)||0)));o.fecha=today();
     try{await db.doc('config/conteo').set(o);S.dirty=false;toast('Conteo guardado ✔')}catch(e){toast('Error al guardar')}}}
-  $('#sb2').onclick=async()=>{const v=num('si');if(!(v>=0))return toast('Escribe el saldo inicial');if(!db)return toast('Sin conexión');
+  if(!ef)$('#sb2').onclick=async()=>{const v=num('si');if(!(v>=0))return toast('Escribe el saldo inicial');if(!db)return toast('Sin conexión');
    try{await db.doc('config/saldos').set({...S.cfg,[k]:v});$('#si').value='';toast('Saldo inicial guardado ✔')}catch(e){toast('Error al guardar')}};
   $('#mb').onclick=async()=>{const amount=num('ma');if(!(amount>0))return toast('Escribe el monto');
    if(await add('moves',{type:$('#mt').value,amount,date:$('#md').value,note:$('#mn').value.trim()})){$('#ma').value='';$('#mn').value='';toast('Guardado ✔')}}},
- refresh(){if(ef){if(!S.dirty)DEN.forEach(d=>{$('#q_'+d[0]).value=S.cnt[d[0]]||''});conteoTot()}$('#bal').textContent=money(caja()[k]);$('#ini').textContent=money(S.cfg[k]||0);
+ refresh(){if(ef){if(!S.dirty)DEN.forEach(d=>{$('#q_'+d[0]).value=S.cnt[d[0]]||''});conteoTot()}$('#bal').textContent=money(ef?cashTotal():caja()[k]);$('#ini').textContent=ef?(S.cnt.fecha||'—'):money(S.cfg[k]||0);
   const sg=ef?{dep:-1,ret:1,gef:-1}:{dep:1,ret:-1,gba:-1},N={dep:'Depósito',ret:'Retiro',gef:'Gasto',gba:'Gasto'};
   const it=[...S.sales.filter(x=>x.method===cur&&!x.hist).map(x=>({ts:x.ts,d:x.date,t:'Venta: '+esc(x.name),a:x.qty*x.price,c:'sales',i:x.id})),
    ...S.purchases.filter(x=>x.method===cur&&!x.hist).map(x=>({ts:x.ts,d:x.date,t:'Compra: '+esc(x.name),a:-x.qty*x.cost,c:'purchases',i:x.id})),
