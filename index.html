@@ -54,7 +54,7 @@ input,select{width:100%;padding:9px;border:1px solid var(--bd);border-radius:8px
 <script>
 const $=s=>document.querySelector(s);
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-const S={products:[],sales:[],purchases:[],moves:[],cfg:{},cnt:{},dirty:false};
+const S={products:[],sales:[],purchases:[],moves:[],cierres:[],cfg:{},cnt:{},dirty:false};
 const MES=['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
 let db=null,tab='resumen',metric='v',selM=null,pend=null;
 const money=n=>'Q'+(Math.round((n||0)*100)/100).toLocaleString('es',{maximumFractionDigits:2});
@@ -91,6 +91,10 @@ function conteoTot(){let t=0;DEN.forEach(d=>{const n=Math.floor(parseFloat($('#q
   $('#ct2').textContent=money(t)}
 function recResumen(){const tc=sum(S.purchases,x=>x.qty*x.cost),tv=sum(S.sales,x=>x.qty*x.price),falta=tc>tv;
   $('#rec').innerHTML=`<b>Inversión vs ventas (total)</b><div class="li"><span>Invertido en compras</span><b>${money(tc)}</b></div><div class="li"><span>Vendido</span><b>${money(tv)}</b></div><div class="li"><span>${falta?'Por recuperar':'Ya recuperado, ganancia'}</span><b class="${falta?'bad':''}">${money(Math.abs(tv-tc))}</b></div>`}
+let CART=[];
+function renderCart(){const c=$('#cartc');if(!c)return;c.style.display=CART.length?'block':'none';
+  $('#cl2').innerHTML=CART.map((x,i)=>`<div class="li"><div><span>${esc(x.name)} ×${x.qty}</span><small>${money(x.price)} c/u · ganancia ${money(x.qty*(x.price-x.cost))}</small></div><div><b>${money(x.qty*x.price)}</b><button class="x" data-r="${i}">🗑</button></div></div>`).join('');
+  $('#ctot').textContent=money(sum(CART,x=>x.qty*x.price))}
 const T={
 resumen:{html:()=>`<div class="grid" id="kp"></div>
 <div class="card" id="rec"></div>
@@ -110,19 +114,31 @@ resumen:{html:()=>`<div class="grid" id="kp"></div>
   const o=M[selM],top=Object.entries(o.p).sort((a,b)=>b[1]-a[1]).slice(0,5);
   $('#det').innerHTML=`<b>${mlabel(selM)}</b><div class="li"><span>Ventas</span><b>${money(o.v)}</b></div><div class="li"><span>Ganancia por producto (menos gastos)</span><b>${money(o.g)}</b></div><div class="li"><span>Invertido en compras</span><b>${money(o.c)}</b></div><div class="li"><span>${o.c>o.v?'Por recuperar':'Recuperado ✔ (ventas − compras)'}</span><b class="${o.c>o.v?'bad':''}">${money(Math.abs(o.v-o.c))}</b></div><div class="mu" style="margin-top:6px">Más vendidos</div>`+top.map(t=>`<div class="li"><span>${esc(t[0])}</span><span>${money(t[1])}</span></div>`).join('')}},
 
-ventas:{html:()=>`<div class="card"><b>Registrar venta</b>
+ventas:{html:()=>`<div class="card"><b>Nueva venta</b>
 <label>Producto</label><input id="sn" list="pl" autocomplete="off" placeholder="Escribe o elige el producto"><span id="dl">${dl()}</span>
 <div class="row"><div><label>Cantidad</label><input id="sq" type="number" inputmode="decimal" value="1" min="0"></div><div><label>Precio unitario</label><input id="sp" type="number" inputmode="decimal" min="0"></div></div>
 <div id="sg" class="mu" style="margin-top:8px"></div>
+<button class="btn" id="sb">+ Agregar a la venta</button></div>
+<div class="card" id="cartc" style="display:none"><b>Productos en esta venta</b><div id="cl2"></div>
+<div class="li"><span><b>Total</b></span><b id="ctot"></b></div>
 <div class="row"><div><label>Pago</label>${sel('sm',MET)}</div><div><label>Fecha</label><input id="sd" type="date" value="${today()}"></div></div>
-<button class="btn" id="sb">Guardar venta</button></div><div class="card"><b id="st">Ventas</b><div id="sl"></div></div>`,
+<button class="btn" id="cobrar">Cobrar venta</button></div>
+<div class="card"><b id="st">Ventas</b><div id="sl"></div></div>`,
  bind(){const pg=()=>{const p=findP($('#sn').value),q=num('sq'),pr=num('sp');
-   $('#sg').innerHTML=p&&q>0&&pr>=0?`Ganancia de esta venta: <b>${money(q*(pr-(p.cost||0)))}</b> (costo ${money(p.cost||0)} c/u)`:(!p&&$('#sn').value.trim()?'Producto no registrado: no se puede calcular la ganancia':'')};
+   $('#sg').innerHTML=p&&q>0&&pr>=0?`Ganancia de este producto: <b>${money(q*(pr-(p.cost||0)))}</b> (costo ${money(p.cost||0)} c/u)`:(!p&&$('#sn').value.trim()?'Producto no registrado: no se puede calcular la ganancia':'')};
   $('#sn').oninput=()=>{const p=findP($('#sn').value);if(p)$('#sp').value=p.price;pg()};$('#sq').oninput=pg;$('#sp').oninput=pg;
-  $('#sb').onclick=async()=>{const name=$('#sn').value.trim(),qty=num('sq'),price=num('sp');
+  $('#sb').onclick=()=>{const name=$('#sn').value.trim(),qty=num('sq'),price=num('sp');
    if(!name||!(qty>0)||!(price>=0))return toast('Completa producto, cantidad y precio');
-   const p=findP(name);if(p&&stock(p)<qty)toast('Aviso: solo hay '+stock(p)+' en inventario');
-   if(await add('sales',{date:$('#sd').value,name:p?p.name:name,pid:p?p.id:null,qty,price,cost:p?p.cost||0:0,method:$('#sm').value})){$('#sn').value='';$('#sp').value='';$('#sq').value=1;pg();toast('Venta guardada ✔')}}},
+   const p=findP(name),en=sum(CART.filter(x=>p&&x.pid===p.id),x=>x.qty);
+   if(p&&stock(p)<qty+en)toast('Aviso: solo hay '+stock(p)+' en inventario');
+   CART.push({name:p?p.name:name,pid:p?p.id:null,qty,price,cost:p?p.cost||0:0});
+   $('#sn').value='';$('#sp').value='';$('#sq').value=1;pg();renderCart();$('#sn').focus()};
+  $('#cl2').onclick=e=>{const b=e.target.closest('[data-r]');if(b){CART.splice(+b.dataset.r,1);renderCart()}};
+  $('#cobrar').onclick=async()=>{if(!CART.length)return;if(!db)return toast('Sin conexión');
+   const date=$('#sd').value,method=$('#sm').value,ticket=Date.now().toString(36),ts=Date.now();
+   try{const b=db.batch();CART.forEach((x,i)=>b.set(db.collection('sales').doc(),{date,name:x.name,pid:x.pid,qty:x.qty,price:x.price,cost:x.cost,method,ticket,ts:ts+i}));await b.commit();
+    const t=sum(CART,x=>x.qty*x.price);CART=[];renderCart();toast('Venta cobrada ✔ '+money(t))}catch(e){toast('Error al guardar la venta')}};
+  renderCart()},
  refresh(){$('#dl').innerHTML=dl();const t=today(),d=S.sales.filter(s=>s.date===t);
   $('#st').textContent='Hoy: '+money(sum(d,s=>s.qty*s.price))+' · '+d.length+' ventas';
   $('#sl').innerHTML=list('sales',[...S.sales].sort((a,b)=>b.ts-a.ts).slice(0,30),s=>`${esc(s.name)} ×${s.qty}`,s=>`${s.date} · ${s.method}`+(s.hist?'':` · ganancia ${money(s.qty*(s.price-s.cost))}`),s=>money(s.qty*s.price))}},
@@ -180,10 +196,39 @@ ${ef?`<div class="card"><b>Conteo de efectivo</b><div class="mu" style="font-siz
    ...S.moves.filter(m=>m.type in sg).map(m=>({ts:m.ts,d:m.date,t:N[m.type]+(m.note?': '+esc(m.note):''),a:sg[m.type]*m.amount,c:'moves',i:m.id}))].sort((a,b)=>b.ts-a.ts).slice(0,40);
   $('#ml').innerHTML=it.length?it.map(x=>`<div class="li"><div><span>${x.t}</span><small>${x.d}</small></div><div><b class="${x.a<0?'bad':''}">${money(x.a)}</b><button class="x" data-c="${x.c}" data-i="${x.i}">🗑</button></div></div>`).join(''):'<div class="mu">Sin movimientos todavía.</div>'}}}
 T.caja=acct('ef');T.bancos=acct('ba');
+let CX={ini:false,cont:false};
+function cierreDia(d){const sv=m=>sum(S.sales.filter(x=>x.date===d&&x.method===m&&!x.hist),x=>x.qty*x.price),
+  mv=t=>sum(S.moves.filter(x=>x.date===d&&x.type===t),x=>x.amount),
+  prev=[...S.cierres].filter(c=>c.date<d).sort((a,b)=>b.date.localeCompare(a.date))[0];
+  return{vef:sv('efectivo'),vba:sv('banco'),cp:sum(S.purchases.filter(x=>x.date===d&&x.method==='efectivo'&&!x.hist),x=>x.qty*x.cost),
+   gef:mv('gef'),dep:mv('dep'),ret:mv('ret'),gan:sum(S.sales.filter(x=>x.date===d&&!x.hist),x=>x.qty*(x.price-x.cost))-mv('gef')-mv('gba'),prev:prev?prev.contado:null}}
+const crow=(t,v,sg)=>`<div class="li"><span>${t}</span><b>${sg}${money(v)}</b></div>`;
+T.cierre={html:()=>{CX={ini:false,cont:false};return `<div class="card"><b>Cierre diario de caja</b>
+<label>Fecha</label><input id="cx_d" type="date" value="${today()}">
+<label>Efectivo inicial (lo que había al abrir)</label><input id="cx_i" type="number" inputmode="decimal" placeholder="0">
+<div id="cx_r" style="margin-top:8px"></div>
+<label>Efectivo contado al cerrar (billetes y monedas)</label><input id="cx_c" type="number" inputmode="decimal" placeholder="0">
+<div id="cx_f"></div><label>Nota (opcional)</label><input id="cx_n">
+<button class="btn" id="cx_b">Guardar cierre</button></div>
+<div class="card"><b>Cierres anteriores</b><div id="cx_h"></div></div>`},
+ bind(){$('#cx_d').oninput=()=>{CX={ini:false,cont:false};T.cierre.refresh()};
+  $('#cx_i').oninput=()=>{CX.ini=true;T.cierre.refresh()};$('#cx_c').oninput=()=>{CX.cont=true;T.cierre.refresh()};
+  $('#cx_b').onclick=async()=>{if(!db)return toast('Sin conexión');const d=$('#cx_d').value;if(!d)return toast('Elige la fecha');
+   const r=cierreDia(d),ini=parseFloat($('#cx_i').value)||0,cont=parseFloat($('#cx_c').value);if(!(cont>=0))return toast('Escribe el efectivo contado');
+   const esp=Math.round((ini+r.vef-r.cp-r.gef-r.dep+r.ret)*100)/100;
+   try{await db.collection('cierres').doc(d).set({date:d,inicio:ini,ventasEf:r.vef,ventasBa:r.vba,comprasEf:r.cp,gastosEf:r.gef,depositos:r.dep,retiros:r.ret,esperado:esp,contado:cont,dif:Math.round((cont-esp)*100)/100,ganancia:r.gan,nota:$('#cx_n').value.trim(),ts:Date.now()});toast('Cierre guardado ✔')}catch(e){toast('Error al guardar el cierre')}}},
+ refresh(){const d=$('#cx_d').value||today(),r=cierreDia(d);
+  if(!CX.ini)$('#cx_i').value=r.prev==null?'':r.prev;if(!CX.cont)$('#cx_c').value=cashTotal()||'';
+  const ini=parseFloat($('#cx_i').value)||0,cont=parseFloat($('#cx_c').value)||0,esp=ini+r.vef-r.cp-r.gef-r.dep+r.ret,df=Math.round((cont-esp)*100)/100;
+  $('#cx_r').innerHTML=crow('Ventas en efectivo',r.vef,'+ ')+crow('Compras pagadas en efectivo',r.cp,'− ')+crow('Gastos en efectivo',r.gef,'− ')+crow('Depósitos al banco',r.dep,'− ')+crow('Retiros del banco',r.ret,'+ ')
+   +`<div class="li"><span><b>Efectivo esperado</b></span><b>${money(esp)}</b></div><div class="li"><span class="mu">Ventas en banco (no entran a caja)</span><span class="mu">${money(r.vba)}</span></div><div class="li"><span>Ganancia del día</span><b>${money(r.gan)}</b></div>`;
+  $('#cx_f').innerHTML=`<div class="li"><span>Diferencia</span><b class="${df?'bad':''}">${df>0?'Sobran ':df<0?'Faltan ':'Cuadra '}${df?money(Math.abs(df)):''}</b></div>`;
+  $('#cx_h').innerHTML=list('cierres',[...S.cierres].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,15),c=>c.date,c=>`esperado ${money(c.esperado)} · contado ${money(c.contado)}`+(c.nota?' · '+esc(c.nota):''),c=>`<span class="${c.dif?'bad':''}">${c.dif>0?'+':''}${money(c.dif)}</span>`)}};
+
 function list(col,arr,a,b,c){if(!arr.length)return'<div class="mu">Sin registros todavía.</div>';
   return arr.map(x=>`<div class="li"><div><span>${a(x)}</span><small>${b(x)}</small></div><div><b>${c(x)}</b><button class="x" data-c="${col}" data-i="${x.id}">🗑</button></div></div>`).join('')}
-document.addEventListener('click',e=>{const b=e.target.closest('.x');if(b)del(b.dataset.c,b.dataset.i,b)});
-const NAMES={resumen:'📊 Resumen',ventas:'🧾 Ventas',compras:'📦 Compras',inventario:'🗂 Inventario',caja:'💵 Caja',bancos:'🏦 Bancos'};
+document.addEventListener('click',e=>{const b=e.target.closest('.x');if(b&&b.dataset.c)del(b.dataset.c,b.dataset.i,b)});
+const NAMES={resumen:'📊 Resumen',ventas:'🧾 Ventas',compras:'📦 Compras',inventario:'🗂 Inventario',caja:'💵 Caja',bancos:'🏦 Bancos',cierre:'🔒 Cierre'};
 function show(t){tab=t;$('#nav').innerHTML=Object.keys(NAMES).map(k=>`<button data-t="${k}" class="${k===t?'on':''}">${NAMES[k]}</button>`).join('');
   document.querySelectorAll('#nav button').forEach(b=>b.onclick=()=>show(b.dataset.t));
   $('#view').innerHTML=T[t].html();T[t].bind();T[t].refresh()}
@@ -191,13 +236,13 @@ function refresh(){T[tab].refresh()}
 const firebaseConfig={apiKey:"AIzaSyADnongIEQCos77jROmdSpXA0KBlk5af7A",authDomain:"cristaleria-e5257.firebaseapp.com",projectId:"cristaleria-e5257",storageBucket:"cristaleria-e5257.firebasestorage.app",messagingSenderId:"542297042746",appId:"1:542297042746:web:f57c270ecaf2c0f9b32a03"};
 firebase.initializeApp(firebaseConfig);
 const auth=firebase.auth();let unsubs=[];
-function stop(){unsubs.forEach(u=>u());unsubs=[];S.products=[];S.sales=[];S.purchases=[];S.moves=[];S.cfg={};S.cnt={};S.dirty=false;S.pend=false}
+function stop(){unsubs.forEach(u=>u());unsubs=[];S.products=[];S.sales=[];S.purchases=[];S.moves=[];S.cierres=[];S.cfg={};S.cnt={};S.dirty=false;S.pend=false}
 auth.onAuthStateChanged(u=>{
   stop();
   $('#login').style.display=u?'none':'block';$('#app').style.display=u?'block':'none';
   if(!u){db=null;return}
   db=firebase.firestore();show(tab);db.doc('config/importado').get().then(d=>{S.pend=!d.exists;refresh()}).catch(()=>{});
-  ['products','sales','purchases','moves'].forEach(c=>unsubs.push(db.collection(c).onSnapshot(snap=>{S[c]=snap.docs.map(d=>({id:d.id,...d.data()}));refresh()},()=>toast('Sin permiso o sin conexión ('+c+')'))));
+  ['products','sales','purchases','moves','cierres'].forEach(c=>unsubs.push(db.collection(c).onSnapshot(snap=>{S[c]=snap.docs.map(d=>({id:d.id,...d.data()}));refresh()},()=>toast('Sin permiso o sin conexión ('+c+')'))));
   unsubs.push(db.doc('config/conteo').onSnapshot(sn=>{S.cnt=sn.exists?sn.data():{};refresh()},()=>{}));
   unsubs.push(db.doc('config/saldos').onSnapshot(sn=>{S.cfg=sn.exists?sn.data():{};refresh()},()=>{}))});
 async function importar(e){const f=e.target.files[0];if(!f)return;const m=$('#impm');m.textContent='Leyendo archivo...';
